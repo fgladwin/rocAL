@@ -71,14 +71,14 @@ RocalMetaData
 
 RocalMetaData
     ROCAL_API_CALL
-    rocalCreateCOCOReader(RocalContext p_context, const char* source_path, bool is_output, bool mask, bool ltrb, bool is_box_encoder) {
+    rocalCreateCOCOReader(RocalContext p_context, const char* source_path, bool is_output, bool mask, bool ltrb, bool is_box_encoder, bool avoid_class_remapping, bool aspect_ratio_grouping, bool is_box_iou_matcher) {
     if (!p_context)
         THROW("Invalid rocal context passed to rocalCreateCOCOReader")
     auto context = static_cast<Context*>(p_context);
     if (mask) {
-        return context->master_graph->create_coco_meta_data_reader(source_path, is_output, MetaDataReaderType::COCO_META_DATA_READER, MetaDataType::PolygonMask, ltrb, is_box_encoder);
+        return context->master_graph->create_coco_meta_data_reader(source_path, is_output, MetaDataReaderType::COCO_META_DATA_READER, MetaDataType::PolygonMask, ltrb, is_box_encoder, avoid_class_remapping, aspect_ratio_grouping, is_box_iou_matcher);
     }
-    return context->master_graph->create_coco_meta_data_reader(source_path, is_output, MetaDataReaderType::COCO_META_DATA_READER, MetaDataType::BoundingBox, ltrb, is_box_encoder);
+    return context->master_graph->create_coco_meta_data_reader(source_path, is_output, MetaDataReaderType::COCO_META_DATA_READER, MetaDataType::BoundingBox, ltrb, is_box_encoder, avoid_class_remapping, aspect_ratio_grouping, is_box_iou_matcher);
 }
 
 RocalMetaData
@@ -88,7 +88,7 @@ RocalMetaData
         THROW("Invalid rocal context passed to rocalCreateCOCOReaderKeyPoints")
     auto context = static_cast<Context*>(p_context);
 
-    return context->master_graph->create_coco_meta_data_reader(source_path, is_output, MetaDataReaderType::COCO_KEY_POINTS_META_DATA_READER, MetaDataType::KeyPoints, sigma, pose_output_width, pose_output_height);
+    return context->master_graph->create_coco_meta_data_reader(source_path, is_output, MetaDataReaderType::COCO_KEY_POINTS_META_DATA_READER, MetaDataType::KeyPoints, false, false, false, false, sigma, pose_output_width, pose_output_height);
 }
 
 RocalMetaData
@@ -200,8 +200,7 @@ void
     if (context->user_batch_size() != meta_data_batch_size)
         THROW("meta data batch size is wrong " + TOSTR(meta_data_batch_size) + " != " + TOSTR(context->user_batch_size()))
     for (unsigned int i = 0; i < meta_data_batch_size; i++) {
-        std::string str_id = meta_data.first[i].erase(0, meta_data.first[i].find_first_not_of('0'));
-        buf[i] = stoi(str_id);
+        buf[i] = meta_data.second->get_image_id_batch()[i];
     }
 }
 
@@ -360,6 +359,32 @@ void
     }
 }
 
+void
+    ROCAL_API_CALL
+    rocalGetROIImageSizes(RocalContext p_context, int* buf) {
+    if (!p_context) {
+        THROW("Invalid rocal context passed to rocalGetROIImageSizes")
+        return;
+    }
+    auto context = static_cast<Context*>(p_context);
+    try {
+        auto meta_data = context->master_graph->meta_data();
+        size_t meta_data_batch_size = meta_data.second->get_img_roi_sizes_batch().size();
+
+        if (!meta_data.second) {
+            WRN("No label has been loaded for this output image")
+            return;
+        }
+        for (unsigned i = 0; i < meta_data_batch_size; i++) {
+            memcpy(buf, &(meta_data.second->get_img_roi_sizes_batch()[i]), sizeof(ImgSize));
+            buf += 2;
+        }
+    } catch (const std::exception& e) {
+        context->capture_error(e.what());
+        std::cerr << e.what() << '\n';
+    }
+}
+
 RocalMetaData
     ROCAL_API_CALL
     rocalCreateTextCifar10LabelReader(RocalContext p_context, const char* source_path, const char* file_prefix) {
@@ -464,4 +489,28 @@ void
     }
 
     *joints_data = (RocalJointsData*)(&(meta_data.second->get_joints_data_batch()));
+}
+
+void
+    ROCAL_API_CALL
+    rocalBoxIouMatcher(RocalContext p_context,
+                       std::vector<float>& anchors,
+                       float criteria, float high_threshold,
+                       float low_threshold,
+                       bool allow_low_quality_matches) {
+    if (!p_context)
+        THROW("Invalid rocal context passed to rocalBoxIouMatcher")
+    auto context = static_cast<Context*>(p_context);
+    context->master_graph->box_iou_matcher(anchors, criteria, high_threshold,
+                                           low_threshold,
+                                           allow_low_quality_matches);
+}
+
+RocalTensorList
+    ROCAL_API_CALL
+    rocalGetMatchedIndices(RocalContext p_context) {
+    if (!p_context)
+        THROW("Invalid rocal context passed to rocalGetMatchedIndices")
+    auto context = static_cast<Context*>(p_context);
+    return context->master_graph->matched_index_meta_data();
 }
