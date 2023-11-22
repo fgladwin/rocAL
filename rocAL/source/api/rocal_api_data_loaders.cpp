@@ -1549,7 +1549,8 @@ rocalVideoFileSource(
     bool loop,
     unsigned step,
     unsigned stride,
-    bool file_list_frame_num) {
+    bool file_list_frame_num,
+    bool pad_sequences) {
     Tensor* output = nullptr;
     if (p_context == nullptr) {
         ERR("Invalid ROCAL context or invalid input image")
@@ -1583,7 +1584,7 @@ rocalVideoFileSource(
 
         output = context->master_graph->create_loader_output_tensor(info);
 
-        context->master_graph->add_node<VideoLoaderNode>({}, {output})->init(internal_shard_count, source_path, StorageType::VIDEO_FILE_SYSTEM, decoder_type, decoder_mode, sequence_length, step, stride, video_prop, shuffle, loop, context->user_batch_size(), context->master_graph->mem_type());
+        context->master_graph->add_node<VideoLoaderNode>({}, {output})->init(internal_shard_count, source_path, StorageType::VIDEO_FILE_SYSTEM, decoder_type, decoder_mode, sequence_length, step, stride, video_prop, shuffle, loop, context->user_batch_size(), context->master_graph->mem_type(), pad_sequences);
         context->master_graph->set_loop(loop);
 
         if (is_output) {
@@ -1614,7 +1615,8 @@ rocalVideoFileSourceSingleShard(
     bool loop,
     unsigned step,
     unsigned stride,
-    bool file_list_frame_num) {
+    bool file_list_frame_num,
+    bool pad_sequences) {
     Tensor* output = nullptr;
     if (p_context == nullptr) {
         ERR("Invalid ROCAL context")
@@ -1654,7 +1656,7 @@ rocalVideoFileSourceSingleShard(
 
         output = context->master_graph->create_loader_output_tensor(info);
 
-        context->master_graph->add_node<VideoLoaderSingleShardNode>({}, {output})->init(shard_id, shard_count, source_path, StorageType::VIDEO_FILE_SYSTEM, decoder_type, decoder_mode, sequence_length, step, stride, video_prop, shuffle, loop, context->user_batch_size(), context->master_graph->mem_type());
+        context->master_graph->add_node<VideoLoaderSingleShardNode>({}, {output})->init(shard_id, shard_count, source_path, StorageType::VIDEO_FILE_SYSTEM, decoder_type, decoder_mode, sequence_length, step, stride, video_prop, shuffle, loop, context->user_batch_size(), context->master_graph->mem_type(), pad_sequences);
         context->master_graph->set_loop(loop);
 
         if (is_output) {
@@ -1687,6 +1689,7 @@ rocalVideoFileResize(
     unsigned step,
     unsigned stride,
     bool file_list_frame_num,
+    bool pad_sequences,
     RocalResizeScalingMode scaling_mode,
     std::vector<unsigned> max_size,
     unsigned resize_shorter,
@@ -1725,7 +1728,7 @@ rocalVideoFileResize(
                                color_format);
 
         Tensor* output = context->master_graph->create_loader_output_tensor(info);
-        context->master_graph->add_node<VideoLoaderNode>({}, {output})->init(internal_shard_count, source_path, StorageType::VIDEO_FILE_SYSTEM, decoder_type, decoder_mode, sequence_length, step, stride, video_prop, shuffle, loop, context->user_batch_size(), context->master_graph->mem_type());
+        context->master_graph->add_node<VideoLoaderNode>({}, {output})->init(internal_shard_count, source_path, StorageType::VIDEO_FILE_SYSTEM, decoder_type, decoder_mode, sequence_length, step, stride, video_prop, shuffle, loop, context->user_batch_size(), context->master_graph->mem_type(), pad_sequences);
         context->master_graph->set_loop(loop);
 
         if (dest_width != video_prop.width && dest_height != video_prop.height) {
@@ -1839,6 +1842,7 @@ rocalVideoFileResizeSingleShard(
     unsigned step,
     unsigned stride,
     bool file_list_frame_num,
+    bool pad_sequences,
     RocalResizeScalingMode scaling_mode,
     std::vector<unsigned> max_size,
     unsigned resize_shorter,
@@ -1882,7 +1886,7 @@ rocalVideoFileResizeSingleShard(
                                tensor_layout,
                                color_format);
         Tensor* output = context->master_graph->create_loader_output_tensor(info);
-        context->master_graph->add_node<VideoLoaderSingleShardNode>({}, {output})->init(shard_id, shard_count, source_path, StorageType::VIDEO_FILE_SYSTEM, decoder_type, decoder_mode, sequence_length, step, stride, video_prop, shuffle, loop, context->user_batch_size(), context->master_graph->mem_type());
+        context->master_graph->add_node<VideoLoaderSingleShardNode>({}, {output})->init(shard_id, shard_count, source_path, StorageType::VIDEO_FILE_SYSTEM, decoder_type, decoder_mode, sequence_length, step, stride, video_prop, shuffle, loop, context->user_batch_size(), context->master_graph->mem_type(), pad_sequences);
         context->master_graph->set_loop(loop);
 
         if (dest_width != video_prop.width && dest_height != video_prop.height) {

@@ -41,8 +41,8 @@ HARDWARE_DECODE_MODE=0 # (hardware_decode_mode:on/off)
 SHUFFLE=0       # (shuffle:on/off)
 
 BATCH_SIZE=1         # Number of sequences per batch
-SEQUENCE_LENGTH=3    # Number of frames per sequence
-STEP=3               # Frame interval from one sequence to another sequence
+SEQUENCE_LENGTH=5    # Number of frames per sequence
+STEP=4               # Frame interval from one sequence to another sequence
 STRIDE=1             # Frame interval within frames in a sequences
 RESIZE_WIDTH=1280    # width with which frames should be resized (applicable only for READER_CASE 2)
 RESIZE_HEIGHT=720    # height with which frames should be resized (applicable only for READER_CASE 2)
@@ -52,11 +52,12 @@ ENABLE_METADATA=0            # outputs labels and names of the associated frames
 ENABLE_FRAME_NUMBER=0        # outputs the starting frame numbers of the sequences in the batch
 ENABLE_TIMESTAMPS=0          # outputs timestamps of the frames in the batch
 ENABLE_SEQUENCE_REARRANGE=0  # rearranges the frames in the sequence NOTE: The order needs to be set in the rocAL_video_unittests.cpp
+PAD_SEQUENCES=1              # allows incomplete sequences
 
 echo ./rocal_video_unittests "$INPUT_PATH" $READER_CASE $DEVICE $HARDWARE_DECODE_MODE $BATCH_SIZE $SEQUENCE_LENGTH $STEP $STRIDE \
 $RGB $SAVE_FRAMES $SHUFFLE $RESIZE_WIDTH $RESIZE_HEIGHT $FILELIST_FRAMENUM \
-$ENABLE_METADATA $ENABLE_FRAME_NUMBER $ENABLE_TIMESTAMPS $ENABLE_SEQUENCE_REARRANGE
+$ENABLE_METADATA $ENABLE_FRAME_NUMBER $ENABLE_TIMESTAMPS $ENABLE_SEQUENCE_REARRANGE $PAD_SEQUENCES
 
 ./rocal_video_unittests "$INPUT_PATH" $READER_CASE $DEVICE $HARDWARE_DECODE_MODE $BATCH_SIZE $SEQUENCE_LENGTH $STEP $STRIDE \
 $RGB $SAVE_FRAMES $SHUFFLE $RESIZE_WIDTH $RESIZE_HEIGHT $FILELIST_FRAMENUM \
-$ENABLE_METADATA $ENABLE_FRAME_NUMBER $ENABLE_TIMESTAMPS $ENABLE_SEQUENCE_REARRANGE
+$ENABLE_METADATA $ENABLE_FRAME_NUMBER $ENABLE_TIMESTAMPS $ENABLE_SEQUENCE_REARRANGE $PAD_SEQUENCES

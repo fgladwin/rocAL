@@ -78,6 +78,7 @@ class VideoFileSourceReader : public VideoReader {
     size_t _in_batch_read_count = 0;
     bool _loop;
     bool _shuffle;
+    bool _pad_sequences = false;
     int _read_counter = 0;
     //!< _sequence_count_all_shards total_number of sequences to figure out the max_batch_size (usually needed for distributed training).
     size_t _sequence_count_all_shards;

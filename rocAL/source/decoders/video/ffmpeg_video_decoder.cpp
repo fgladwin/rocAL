@@ -59,6 +59,7 @@ VideoDecoder::Status FFmpegVideoDecoder::Decode(unsigned char *out_buffer, unsig
         return Status::FAILED;
     }
     unsigned frame_count = 0;
+    unsigned filled_frames_count = 0;
     bool end_of_stream = false;
     bool sequence_filled = false;
     uint8_t *dst_data[4] = {0};
@@ -110,6 +111,7 @@ VideoDecoder::Status FFmpegVideoDecoder::Decode(unsigned char *out_buffer, unsig
                     memcpy(out_buffer, dec_frame->data[0], dec_frame->linesize[0] * out_height);
                 }
                 out_buffer = out_buffer + image_size;
+                filled_frames_count += 1;
             }
             ++frame_count;
             av_frame_unref(dec_frame);
@@ -121,6 +123,9 @@ VideoDecoder::Status FFmpegVideoDecoder::Decode(unsigned char *out_buffer, unsig
         av_packet_unref(&pkt);
         if (sequence_filled) break;
     } while (!end_of_stream);
+    if (!sequence_filled && (sequence_length != filled_frames_count)) {
+        memset(out_buffer, 0, image_size * (sequence_length - filled_frames_count));
+    }
     avcodec_flush_buffers(_video_dec_ctx);
     av_frame_free(&dec_frame);
     sws_freeContext(swsctx);

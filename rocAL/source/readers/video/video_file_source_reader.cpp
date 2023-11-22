@@ -64,6 +64,7 @@ VideoReader::Status VideoFileSourceReader::initialize(ReaderConfig desc) {
     _video_frame_count = _video_prop.frames_count;
     _start_end_frame = _video_prop.start_end_frame_num;
     _batch_count = desc.get_batch_size();
+    _pad_sequences = desc.pad_sequences();
     _total_sequences_count = 0;
     ret = create_sequence_info();
 
@@ -110,7 +111,7 @@ VideoReader::Status VideoFileSourceReader::create_sequence_info() {
     VideoReader::Status status = VideoReader::Status::OK;
     for (size_t i = 0; i < _video_count; i++) {
         unsigned start = std::get<0>(_start_end_frame[i]);
-        size_t max_sequence_frames = (_sequence_length - 1) * _stride;
+        size_t max_sequence_frames = _pad_sequences ? 0 : (_sequence_length - 1) * _stride;
         for (size_t sequence_start = start; (sequence_start + max_sequence_frames) < (start + _video_frame_count[i]); sequence_start += _step) {
             if (get_sequence_shard_id() != _shard_id) {
                 _sequence_count_all_shards++;
