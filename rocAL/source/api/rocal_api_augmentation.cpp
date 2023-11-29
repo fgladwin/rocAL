@@ -81,7 +81,9 @@ rocalElementExtract(RocalContext p_context,
 
         std::vector<size_t> new_dims;
         new_dims = output_info.dims();
-        new_dims[1] = element_map.size();
+        // Creating output tensor with FNHWC / FNCHW format
+        new_dims[1] = new_dims[0];          // Set N as the second dimension in output tensor
+        new_dims[0] = element_map.size();   // Set F (no of frames) as the first dimension in output tensor
         output_info.set_dims(new_dims);
 
         // std::vector<size_t> dims(input_info.end() - 3, input_info.end());
