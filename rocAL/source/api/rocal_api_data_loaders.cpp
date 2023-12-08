@@ -38,6 +38,7 @@ THE SOFTWARE.
 #include "node_image_loader.h"
 #include "node_image_loader_single_shard.h"
 #include "node_resize.h"
+#include "node_crop_mirror_normalize.h"
 #include "rocal_api.h"
 
 namespace filesys = boost::filesystem;
@@ -1550,7 +1551,8 @@ rocalVideoFileSource(
     unsigned step,
     unsigned stride,
     bool file_list_frame_num,
-    bool pad_sequences) {
+    bool pad_sequences,
+    bool normalized) {
     Tensor* output = nullptr;
     if (p_context == nullptr) {
         ERR("Invalid ROCAL context or invalid input image")
@@ -1587,9 +1589,24 @@ rocalVideoFileSource(
         context->master_graph->add_node<VideoLoaderNode>({}, {output})->init(internal_shard_count, source_path, StorageType::VIDEO_FILE_SYSTEM, decoder_type, decoder_mode, sequence_length, step, stride, video_prop, shuffle, loop, context->user_batch_size(), context->master_graph->mem_type(), pad_sequences);
         context->master_graph->set_loop(loop);
 
-        if (is_output) {
-            auto actual_output = context->master_graph->create_tensor(info, is_output);
-            context->master_graph->add_node<CopyNode>({output}, {actual_output});
+        if (normalized) {
+            TensorInfo output_info = info;
+            auto normalized_output = context->master_graph->create_tensor(output_info, false);
+            auto mirror = static_cast<IntParam*>(rocalCreateIntParameter(0));
+            std::vector<float> mean = {0, 0, 0};
+            std::vector<float> std_dev = {255, 255, 255};
+            std::shared_ptr<CropMirrorNormalizeNode> normalize_node = context->master_graph->add_node<CropMirrorNormalizeNode>({output}, {normalized_output});
+            normalize_node->init(output_info.max_shape()[1], output_info.max_shape()[0], 0, 0, mean, std_dev, mirror);
+            
+            if (is_output) {
+                auto actual_output = context->master_graph->create_tensor(output_info, is_output);
+                context->master_graph->add_node<CopyNode>({normalized_output}, {actual_output});
+            }
+        } else {
+            if (is_output) {
+                auto actual_output = context->master_graph->create_tensor(info, is_output);
+                context->master_graph->add_node<CopyNode>({output}, {actual_output});
+            }
         }
 #else
         THROW("Video decoder is not enabled since ffmpeg is not present")
@@ -1616,7 +1633,8 @@ rocalVideoFileSourceSingleShard(
     unsigned step,
     unsigned stride,
     bool file_list_frame_num,
-    bool pad_sequences) {
+    bool pad_sequences,
+    bool normalized) {
     Tensor* output = nullptr;
     if (p_context == nullptr) {
         ERR("Invalid ROCAL context")
@@ -1659,9 +1677,24 @@ rocalVideoFileSourceSingleShard(
         context->master_graph->add_node<VideoLoaderSingleShardNode>({}, {output})->init(shard_id, shard_count, source_path, StorageType::VIDEO_FILE_SYSTEM, decoder_type, decoder_mode, sequence_length, step, stride, video_prop, shuffle, loop, context->user_batch_size(), context->master_graph->mem_type(), pad_sequences);
         context->master_graph->set_loop(loop);
 
-        if (is_output) {
-            auto actual_output = context->master_graph->create_tensor(info, is_output);
-            context->master_graph->add_node<CopyNode>({output}, {actual_output});
+        if (normalized) {
+            TensorInfo output_info = info;
+            auto normalized_output = context->master_graph->create_tensor(output_info, false);
+            auto mirror = static_cast<IntParam*>(rocalCreateIntParameter(0));
+            std::vector<float> mean = {0, 0, 0};
+            std::vector<float> std_dev = {255, 255, 255};
+            std::shared_ptr<CropMirrorNormalizeNode> normalize_node = context->master_graph->add_node<CropMirrorNormalizeNode>({output}, {normalized_output});
+            normalize_node->init(output_info.max_shape()[1], output_info.max_shape()[0], 0, 0, mean, std_dev, mirror);
+            
+            if (is_output) {
+                auto actual_output = context->master_graph->create_tensor(output_info, is_output);
+                context->master_graph->add_node<CopyNode>({normalized_output}, {actual_output});
+            }
+        } else {
+            if (is_output) {
+                auto actual_output = context->master_graph->create_tensor(info, is_output);
+                context->master_graph->add_node<CopyNode>({output}, {actual_output});
+            }
         }
 #else
         THROW("Video decoder is not enabled since ffmpeg is not present")
@@ -1690,6 +1723,7 @@ rocalVideoFileResize(
     unsigned stride,
     bool file_list_frame_num,
     bool pad_sequences,
+    bool normalized,
     RocalResizeScalingMode scaling_mode,
     std::vector<unsigned> max_size,
     unsigned resize_shorter,
@@ -1804,16 +1838,23 @@ rocalVideoFileResize(
 
             std::shared_ptr<ResizeNode> resize_node = context->master_graph->add_node<ResizeNode>({output}, {resize_output});
             resize_node->init(out_width, out_height, resize_scaling_mode, maximum_size, interpolation_type);
-
-            if (is_output) {
-                auto actual_output = context->master_graph->create_tensor(output_info, is_output);
-                context->master_graph->add_node<CopyNode>({resize_output}, {actual_output});
-            }
-        } else {
-            if (is_output) {
-                auto actual_output = context->master_graph->create_tensor(info, is_output);
-                context->master_graph->add_node<CopyNode>({output}, {actual_output});
-            }
+            output = resize_output;
+            info = output_info;
+        }
+        if (normalized) {
+            TensorInfo output_info = info;
+            auto normalized_output = context->master_graph->create_tensor(output_info, false);
+            auto mirror = static_cast<IntParam*>(rocalCreateIntParameter(0));
+            std::vector<float> mean = {0, 0, 0};
+            std::vector<float> std_dev = {255, 255, 255};
+            std::shared_ptr<CropMirrorNormalizeNode> normalize_node = context->master_graph->add_node<CropMirrorNormalizeNode>({output}, {normalized_output});
+            normalize_node->init(output_info.max_shape()[1], output_info.max_shape()[0], 0, 0, mean, std_dev, mirror);
+            output = normalized_output;
+            info = output_info;
+        }
+        if (is_output) {
+            auto actual_output = context->master_graph->create_tensor(info, is_output);
+            context->master_graph->add_node<CopyNode>({output}, {actual_output});
         }
 #else
         THROW("Video decoder is not enabled since ffmpeg is not present")
@@ -1843,6 +1884,7 @@ rocalVideoFileResizeSingleShard(
     unsigned stride,
     bool file_list_frame_num,
     bool pad_sequences,
+    bool normalized,
     RocalResizeScalingMode scaling_mode,
     std::vector<unsigned> max_size,
     unsigned resize_shorter,
@@ -1961,16 +2003,23 @@ rocalVideoFileResizeSingleShard(
 
             std::shared_ptr<ResizeNode> resize_node = context->master_graph->add_node<ResizeNode>({output}, {resize_output});
             resize_node->init(out_width, out_height, resize_scaling_mode, maximum_size, interpolation_type);
-
-            if (is_output) {
-                auto actual_output = context->master_graph->create_tensor(output_info, is_output);
-                context->master_graph->add_node<CopyNode>({resize_output}, {actual_output});
-            }
-        } else {
-            if (is_output) {
-                auto actual_output = context->master_graph->create_tensor(info, is_output);
-                context->master_graph->add_node<CopyNode>({output}, {actual_output});
-            }
+            output = resize_output;
+            info = output_info;
+        }
+        if (normalized) {
+            TensorInfo output_info = info;
+            auto normalized_output = context->master_graph->create_tensor(output_info, false);
+            auto mirror = static_cast<IntParam*>(rocalCreateIntParameter(0));
+            std::vector<float> mean = {0, 0, 0};
+            std::vector<float> std_dev = {255, 255, 255};
+            std::shared_ptr<CropMirrorNormalizeNode> normalize_node = context->master_graph->add_node<CropMirrorNormalizeNode>({output}, {normalized_output});
+            normalize_node->init(output_info.max_shape()[1], output_info.max_shape()[0], 0, 0, mean, std_dev, mirror);
+            output = normalized_output;
+            info = output_info;
+        }
+        if (is_output) {
+            auto actual_output = context->master_graph->create_tensor(info, is_output);
+            context->master_graph->add_node<CopyNode>({output}, {actual_output});
         }
 #else
         THROW("Video decoder is not enabled since ffmpeg is not present")

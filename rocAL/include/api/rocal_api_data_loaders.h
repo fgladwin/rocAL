@@ -606,7 +606,8 @@ extern "C" RocalTensor ROCAL_API_CALL rocalVideoFileSource(RocalContext context,
                                                            unsigned step = 0,
                                                            unsigned stride = 0,
                                                            bool file_list_frame_num = true,
-                                                           bool pad_sequences = false);
+                                                           bool pad_sequences = false,
+                                                           bool normalized = false);
 
 /*! \brief Creates a video reader and decoder as a source. It allocates the resources and objects required to read and decode mp4 videos stored on the file systems. It accepts external sharding information to load a singe shard only.
  * \ingroup group_rocal_data_loaders
@@ -639,7 +640,8 @@ extern "C" RocalTensor ROCAL_API_CALL rocalVideoFileSourceSingleShard(RocalConte
                                                                       unsigned step = 0,
                                                                       unsigned stride = 0,
                                                                       bool file_list_frame_num = true,
-                                                                      bool pad_sequences = false);
+                                                                      bool pad_sequences = false,
+                                                                      bool normalized = false);
 
 /*! \brief Creates a video reader and decoder as a source. It allocates the resources and objects required to read and decode mp4 videos stored on the file systems. Resizes the decoded frames to the dest width and height.
  * \ingroup group_rocal_data_loaders
@@ -675,6 +677,7 @@ extern "C" RocalTensor ROCAL_API_CALL rocalVideoFileResize(RocalContext context,
                                                            unsigned stride = 0,
                                                            bool file_list_frame_num = true,
                                                            bool pad_sequences = false,
+                                                           bool normalized = false,
                                                            RocalResizeScalingMode scaling_mode = ROCAL_SCALING_MODE_DEFAULT,
                                                            std::vector<unsigned> max_size = {},
                                                            unsigned resize_shorter = 0,
@@ -699,6 +702,7 @@ extern "C" RocalTensor ROCAL_API_CALL rocalVideoFileResize(RocalContext context,
  * \param [in] stride: Frame interval between frames in a sequence.
  * \param [in] file_list_frame_num: Determines if the user wants to read frame number or timestamps if a text file is passed in the source_path.
  * \param [in] pad_sequences: Allows incomplete sequences with black frames, incase of insufficient frames at the end of the video
+ * \param [in] normalized:  
  * \return Reference to the output tensor
  */
 extern "C" RocalTensor ROCAL_API_CALL rocalVideoFileResizeSingleShard(RocalContext context,
@@ -717,6 +721,7 @@ extern "C" RocalTensor ROCAL_API_CALL rocalVideoFileResizeSingleShard(RocalConte
                                                                       unsigned stride = 0,
                                                                       bool file_list_frame_num = true,
                                                                       bool pad_sequences = false,
+                                                                      bool normalized = false,
                                                                       RocalResizeScalingMode scaling_mode = ROCAL_SCALING_MODE_DEFAULT,
                                                                       std::vector<unsigned> max_size = {},
                                                                       unsigned resize_shorter = 0,
