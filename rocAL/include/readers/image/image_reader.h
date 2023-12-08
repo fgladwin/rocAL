@@ -65,12 +65,14 @@ struct ReaderConfig {
     /// \param loop if True the reader's available images still the same no matter how many images have been read
     bool shuffle() { return _shuffle; }
     bool loop() { return _loop; }
+    bool pad_sequences() { return _pad_sequences; }
     void set_shuffle(bool shuffle) { _shuffle = shuffle; }
     void set_loop(bool loop) { _loop = loop; }
     void set_meta_data_reader(std::shared_ptr<MetaDataReader> meta_data_reader) { _meta_data_reader = meta_data_reader; }
     void set_sequence_length(unsigned sequence_length) { _sequence_length = sequence_length; }
     void set_frame_step(unsigned step) { _sequence_frame_step = step; }
     void set_frame_stride(unsigned stride) { _sequence_frame_stride = stride; }
+    void set_pad_sequences(bool pad_sequences) { _pad_sequences = pad_sequences; }
     size_t get_shard_count() { return _shard_count; }
     size_t get_shard_id() { return _shard_id; }
     size_t get_cpu_num_threads() { return _cpu_num_threads; }
@@ -103,6 +105,7 @@ struct ReaderConfig {
     size_t _sequence_frame_stride = 1;
     bool _shuffle = false;
     bool _loop = false;
+    bool _pad_sequences = false;
     std::string _file_prefix = "";  //!< to read only files with prefix. supported only for cifar10_data_reader and tf_record_reader
     std::shared_ptr<MetaDataReader> _meta_data_reader = nullptr;
 #ifdef ROCAL_VIDEO

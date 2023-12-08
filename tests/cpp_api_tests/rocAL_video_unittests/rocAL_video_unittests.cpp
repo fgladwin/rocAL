@@ -93,6 +93,8 @@ int main(int argc, const char **argv) {
     bool enable_sequence_rearrange = false;
     bool is_output = true;
     unsigned hardware_decode_mode = 0;
+    bool pad_sequences = false;
+    bool normalize = false;
     if (argc >= argIdx + MIN_ARG_COUNT)
         reader_case = atoi(argv[++argIdx]);
     if (argc >= argIdx + MIN_ARG_COUNT)
@@ -127,6 +129,10 @@ int main(int argc, const char **argv) {
         enable_timestamps = atoi(argv[++argIdx]) ? true : false;
     if (argc >= argIdx + MIN_ARG_COUNT)
         enable_sequence_rearrange = atoi(argv[++argIdx]) ? true : false;
+    if (argc >= argIdx + MIN_ARG_COUNT)
+        pad_sequences = atoi(argv[++argIdx]) ? true : false;
+    if (argc >= argIdx + MIN_ARG_COUNT)
+        normalize = atoi(argv[++argIdx]) ? true : false;
 
     auto decoder_mode = ((hardware_decode_mode == 1) ? RocalDecodeDevice::ROCAL_HW_DECODE : RocalDecodeDevice::ROCAL_SW_DECODE);
     if (!IsPathExist(source_path)) {
@@ -174,7 +180,7 @@ int main(int argc, const char **argv) {
     switch (reader_case) {
         default: {
             std::cout << "\n>>>> VIDEO READER\n";
-            input1 = rocalVideoFileSource(handle, source_path, color_format, decoder_mode, shard_count, sequence_length, shuffle, is_output, false, frame_step, frame_stride, file_list_frame_num);
+            input1 = rocalVideoFileSource(handle, source_path, color_format, decoder_mode, shard_count, sequence_length, shuffle, is_output, false, frame_step, frame_stride, file_list_frame_num, pad_sequences, normalize);
             break;
         }
         case 2: {
@@ -183,7 +189,7 @@ int main(int argc, const char **argv) {
                 std::cerr << "\n[ERR]Resize width and height are passed as NULL values\n";
                 return -1;
             }
-            input1 = rocalVideoFileResize(handle, source_path, color_format, decoder_mode, shard_count, sequence_length, resize_width, resize_height, shuffle, is_output, false, frame_step, frame_stride, file_list_frame_num);
+            input1 = rocalVideoFileResize(handle, source_path, color_format, decoder_mode, shard_count, sequence_length, resize_width, resize_height, shuffle, is_output, false, frame_step, frame_stride, file_list_frame_num, pad_sequences, normalize);
             break;
         }
         case 3: {
