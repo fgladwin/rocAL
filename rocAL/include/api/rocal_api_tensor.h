@@ -61,11 +61,13 @@ class rocalTensorList {
    public:
     virtual uint64_t size() = 0;
     virtual rocalTensor* at(size_t index) = 0;
+    virtual std::string type() = 0;
     // isDenseTensor
 };
 
 typedef rocalTensor* RocalTensor;
 typedef rocalTensorList* RocalTensorList;
 typedef std::vector<rocalTensorList*> RocalMetaData;
+typedef std::tuple<rocalTensor*, std::vector<rocalTensorList*>> RocalReaderMetaData;
 
 #endif  // MIVISIONX_ROCAL_API_TENSOR_H
