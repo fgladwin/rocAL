@@ -25,6 +25,10 @@ THE SOFTWARE.
 #include <unordered_map>
 #include <typeindex>
 #include <string>
+#include <type_traits>
+#include <functional>
+#include <stdexcept>
+#include <any>
 
 /*!
  * \brief Centralized enum registry for automatic enum type name management
@@ -38,7 +42,7 @@ public:
      * \brief Get the singleton instance of the enum registry
      * \return Reference to the singleton EnumRegistry instance
      */
-    static EnumRegistry& getInstance() noexcept {
+    static EnumRegistry& getInstance() {
         static EnumRegistry instance;
         return instance;
     }
@@ -81,7 +85,7 @@ public:
      * \param type The type_index to check
      * \return true if the enum type is registered, false otherwise
      */
-    bool isEnumRegistered(const std::type_index& type) const noexcept {
+    bool isEnumRegistered(const std::type_index& type) const {
         return _enum_map.find(type) != _enum_map.end();
     }
 
@@ -103,7 +107,7 @@ private:
  * Usage: REGISTER_ENUM(MyEnumType)
  */
 #define REGISTER_ENUM(EnumType) \
-    [[maybe_unused]] static bool enum_registered_##EnumType = []() { \
+    static bool enum_registered_##EnumType = []() { \
         EnumRegistry::getInstance().registerEnum<EnumType>(#EnumType); \
         return true; \
     }();
