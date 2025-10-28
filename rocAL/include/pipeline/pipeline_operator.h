@@ -37,8 +37,36 @@ class PipelineOperator {
     }
 
     // Set the list of arguments associated with this operator
-    void set_arguments(std::vector<Argument>& op_arguments) {
-        arguments = op_arguments;
+    void set_arguments(const std::vector<Argument>& arguments) {
+        this->arguments = arguments;
+    }
+
+    /**
+     * Get the argument list for this operator.
+     *
+     * For reader modules, arguments are stored directly on the operator.
+     * For augmentation operators, the arguments are maintained by the underlying Node.
+     */
+    const std::vector<Argument>& get_arguments() {
+        if (this->module_name == "reader") {
+            return this->arguments;
+        } else {
+            return this->node->get_args_list();
+        }
+    }
+
+    /**
+     * Get the input tensors connected to the underlying node.
+     */
+    const std::vector<Tensor *>& get_inputs() const {
+        return this->node->input();
+    }
+
+    /**
+     * Get the output tensors produced by the underlying node.
+     */
+    const std::vector<Tensor *>& get_outputs() const {
+        return this->node->output();
     }
 
     std::string operator_name;              // Name of the operator (e.g., "ResizeNode")
