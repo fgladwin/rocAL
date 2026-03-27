@@ -113,7 +113,8 @@ public:
     vx_context get_vx_context() { return _context; }
     template <typename T>
     std::shared_ptr<T> add_node(const std::vector<Tensor *> &inputs, const std::vector<Tensor *> &outputs);
-    std::shared_ptr<Node> add_node(std::string node_name, const std::vector<Tensor *> &inputs, const std::vector<Tensor *> &outputs, bool is_loader_node = false);
+    // Creates and adds a node to the pipeline graph by name during deserialization
+    std::shared_ptr<Node> add_node(const std::string& node_name, const std::vector<Tensor *> &inputs, const std::vector<Tensor *> &outputs, bool is_loader_node = false);
     template <typename T, typename M>
     std::shared_ptr<T> meta_add_node(std::shared_ptr<M> node);
     Tensor *create_tensor(const TensorInfo &info, bool is_output);
@@ -329,6 +330,10 @@ inline std::shared_ptr<ImageLoaderSingleShardNode> MasterGraph::add_node(const s
     _loader_modules.emplace_back(loader_module);
     node->set_graph_id(_loaders_count++);
     _root_nodes.push_back(node);
+
+    // Add each operator to the pipeline operators list
+    _pipeline_operators.push_back(std::make_shared<PipelineOperator>(node->node_name() + "_" + std::to_string(_op_idx++), "loader", node));
+
     for (auto &output : outputs)
         _tensor_map.insert(std::make_pair(output, node));
 

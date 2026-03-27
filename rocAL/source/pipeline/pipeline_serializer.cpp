@@ -30,22 +30,13 @@ void PipelineSerializer::serialize_to_string(std::string& serialized_string) {
     }
 }
 
-void PipelineSerializer::serialize_to_file(const std::string& file_path) {
-    std::ofstream ofs(file_path, std::ios::binary);
-    if (!ofs) {
-        THROW("Failed to open file for writing serialized pipeline: " + file_path);
-    }
-    if (!_pipeline_proto.SerializeToOstream(&ofs)) {
-        THROW("Failed to serialize pipeline to file: " + file_path);
-    }
-}
-
-void PipelineSerializer::serialize_pipeline_config(size_t num_threads, size_t batch_size, int device_id, RocalMemType device_type, size_t prefetch_queue_depth) {
+void PipelineSerializer::serialize_pipeline_config(size_t num_threads, size_t batch_size, int device_id, RocalMemType device_type, size_t prefetch_queue_depth, size_t seed) {
     _pipeline_proto.set_num_threads(static_cast<uint64_t>(num_threads));
     _pipeline_proto.set_batch_size(static_cast<uint64_t>(batch_size));
     _pipeline_proto.set_device_id(device_id);
     _pipeline_proto.set_rocal_cpu(device_type == RocalMemType::HOST);
     _pipeline_proto.set_prefetch_queue_depth(static_cast<uint64_t>(prefetch_queue_depth));
+    _pipeline_proto.set_seed(static_cast<uint64_t>(seed));
 }
 
 void set_tensor_proto(rocal_proto::InputOutput *in_out_proto, Tensor *tensor, bool is_input) {
@@ -90,7 +81,7 @@ void serialize_simple_parameter(rocal_proto::Parameter *parameter, const Argumen
     auto param_core = extract_param_core<T>(op_arg);
     auto simple_param = dynamic_cast<SimpleParameter<T> *>(param_core);
     if (!simple_param) {
-        THROW("Failed to cast parameter '" + op_arg.arg_name + "' to SimpleParameter type");
+        THROW("Failed to cast parameter '" + op_arg.arg_name + "' to SimpleParameter type.");
     }
     add_param_value(parameter, simple_param->get());
 }
@@ -101,7 +92,7 @@ void serialize_uniform_rand(rocal_proto::Parameter *parameter, const Argument &o
     auto param_core = extract_param_core<T>(op_arg);
     auto uniform_param = dynamic_cast<UniformRand<T> *>(param_core);
     if (!uniform_param) {
-        THROW("Failed to cast parameter '" + op_arg.arg_name + "' to UniformRand type");
+        THROW("Failed to cast parameter '" + op_arg.arg_name + "' to UniformRand type.");
     }
     auto uniform_range = uniform_param->get_start_and_end();
     add_param_value(parameter, uniform_range.first);
@@ -114,7 +105,7 @@ void serialize_custom_rand(rocal_proto::Parameter *parameter, const Argument &op
     auto param_core = extract_param_core<T>(op_arg);
     auto random_param = dynamic_cast<CustomRand<T> *>(param_core);
     if (!random_param) {
-        THROW("Failed to cast parameter '" + op_arg.arg_name + "' to CustomRand type");
+        THROW("Failed to cast parameter '" + op_arg.arg_name + "' to CustomRand type.");
     }
     // Add values
     auto values_vec = random_param->get_values();
@@ -152,10 +143,11 @@ void serialize_parameter_to_protobuf(rocal_proto::Parameter *parameter, const Ar
     }
 }
 
-void PipelineSerializer::serialize_pipeop_arguments(const std::vector<Argument>& arguments_list, rocal_proto::OperatorDef *opdef) {
+void PipelineSerializer::serialize_pipeop_arguments(const ArgumentSet& arguments_list, rocal_proto::OperatorDef *opdef) {
 
     // Iterate through each argument to store in the protobuffers
-    for (auto &op_arg : arguments_list) {
+    for (auto &arg_pair : arguments_list) {
+        const Argument& op_arg = arg_pair.second;
         rocal_proto::Arguments *arg = opdef->add_args();
         arg->set_name(op_arg.arg_name);
         arg->set_type(op_arg.type_name);
@@ -170,7 +162,7 @@ void PipelineSerializer::serialize_pipeop_arguments(const std::vector<Argument>&
             serialize_parameter_to_protobuf(param, op_arg);
         } else if (op_arg.type_name == "enum") {
             if (op_arg.values.empty()) {
-                THROW("Enum argument " + op_arg.arg_name + " has no values");
+                THROW("Enum argument '" + op_arg.arg_name + "' requires at least one value.");
             }
             rocal_proto::EnumType* enum_arg = arg->mutable_enum_value();
             enum_arg->set_name(op_arg.sub_type_name);
@@ -189,7 +181,7 @@ void PipelineSerializer::serialize_pipeop_arguments(const std::vector<Argument>&
                                || op_arg.type_name == "map_string") {
                         static_cast<void>(arg->add_string_vectors());
                     } else {
-                        THROW("Vector type not supported for Argument " + op_arg.arg_name + " with type " + op_arg.type_name);
+                        THROW("Vector type not supported for Argument " + op_arg.arg_name + " with type " + op_arg.type_name + ".");
                     }
                 } else {
                     if (op_arg.type_name == "int" || op_arg.type_name == "unsigned" || op_arg.type_name == "size_t") {
@@ -216,7 +208,7 @@ void PipelineSerializer::serialize_pipeop_arguments(const std::vector<Argument>&
                             vec->add_values(std::any_cast<std::string>(v));
                         }
                     } else {
-                        THROW("Vector type not supported for Argument " + op_arg.arg_name + " with type " + op_arg.type_name);
+                        THROW("Vector type not supported for Argument " + op_arg.arg_name + " with type " + op_arg.type_name + ".");
                     }
                 }
             } else {
@@ -238,7 +230,7 @@ void PipelineSerializer::serialize_pipeop_arguments(const std::vector<Argument>&
                     } else if (op_arg.type_name == "size_t") {
                         arg->add_uints(std::any_cast<size_t>(v));
                     } else {
-                        THROW("Invalid type specified for the Argument " + op_arg.arg_name);
+                        THROW("Invalid type specified for the Argument " + op_arg.arg_name + ".");
                     }
                 }
             }
@@ -281,9 +273,8 @@ void PipelineSerializer::serialize_output_tensors(TensorList& output_tensors_lis
     }
 }
 
-RocalStatus PipelineSerializer::deserialize_args_from_protobuf(const rocal_proto::OperatorDef& opdef, std::vector<Argument>& arguments) {
+RocalStatus PipelineSerializer::deserialize_args_from_protobuf(const rocal_proto::OperatorDef& opdef, ArgumentSet& arguments) {
     arguments.clear();
-    arguments.reserve(opdef.args_size());
     for (const auto& proto_arg : opdef.args()) {
         Argument arg;
         arg.arg_name = proto_arg.name();
@@ -299,16 +290,22 @@ RocalStatus PipelineSerializer::deserialize_args_from_protobuf(const rocal_proto
             if (EnumRegistry::getInstance().isEnumRegistered(arg.sub_type_name)) {
                 // Use new std::any-based approach
                 std::any enum_value = EnumRegistry::getInstance().convertIntToEnum(arg.sub_type_name, enum_val.value());
-                arg.values.push_back(enum_value);
+                arg.values.emplace_back(enum_value);
             } else {
-                THROW("Invalid instance name set to the argument: " + arg.sub_type_name);
+                THROW("Enum type '" + arg.sub_type_name + "' is not registered. Please ensure the enum is properly registered with EnumRegistry before deserialization.");
             }
         } else if (arg.is_parameter) {
             const auto& param = proto_arg.param();
             if (arg.type_name == "int") {
                 if (arg.sub_type_name == "SimpleParameter") {
+                    if (param.param_val_int_size() < 1) {
+                        THROW("Invalid parameter: missing value for int SimpleParameter '" + arg.arg_name + "'");
+                    }
                     arg.param = static_cast<IntParam*>(ParameterFactory::instance()->create_single_value_int_param(param.param_val_int(0)));
                 } else if (arg.sub_type_name == "UniformRand") {
+                    if (param.param_val_int_size() < 2) {
+                        THROW("Invalid parameter: missing values for UniformRand parameter " + arg.arg_name);
+                    }
                     arg.param = static_cast<IntParam*>(ParameterFactory::instance()->create_uniform_int_rand_param(param.param_val_int(0), param.param_val_int(1)));
                 } else if (arg.sub_type_name == "CustomRand") {
                     std::vector<int> values(param.param_val_int().begin(), param.param_val_int().end());
@@ -316,11 +313,19 @@ RocalStatus PipelineSerializer::deserialize_args_from_protobuf(const rocal_proto
                     arg.param = static_cast<IntParam*>(ParameterFactory::instance()->create_custom_int_rand_param(values.data(),
                                                                       freqs.data(),
                                                                       values.size()));
+                } else {
+                    THROW("Invalid parameter sub-type '" + arg.sub_type_name + "' for int parameter '" + arg.arg_name + "'. Expected: SimpleParameter, UniformRand, or CustomRand");
                 }
             } else if (arg.type_name == "float") {
                 if (arg.sub_type_name == "SimpleParameter") {
+                    if (param.param_val_float_size() < 1) {
+                        THROW("Invalid parameter: missing value for float SimpleParameter '" + arg.arg_name + "'");
+                    }
                     arg.param = static_cast<FloatParam*>(ParameterFactory::instance()->create_single_value_float_param(param.param_val_float(0)));
                 } else if (arg.sub_type_name == "UniformRand") {
+                    if (param.param_val_float_size() < 2) {
+                        THROW("Invalid parameter: missing values for UniformRand parameter " + arg.arg_name);
+                    }
                     arg.param = static_cast<FloatParam*>(ParameterFactory::instance()->create_uniform_float_rand_param(param.param_val_float(0), param.param_val_float(1)));
                 } else if (arg.sub_type_name == "CustomRand") {
                     std::vector<float> values(param.param_val_float().begin(), param.param_val_float().end());
@@ -328,46 +333,47 @@ RocalStatus PipelineSerializer::deserialize_args_from_protobuf(const rocal_proto
                     arg.param = static_cast<FloatParam*>(ParameterFactory::instance()->create_custom_float_rand_param(values.data(),
                                                                       freqs.data(),
                                                                       values.size()));
+                } else {
+                    THROW("Invalid parameter sub-type '" + arg.sub_type_name + "' for float parameter '" + arg.arg_name + "'. Expected: SimpleParameter, UniformRand, or CustomRand");
                 }
             } else {
+                // For unsupported parameter types, set as null pointer
                 arg.is_null_ptr = true;
             }
         } else if (arg.is_vector) {
             // Handle vector deserialization based on type
             if (arg.type_name == "int" || arg.type_name == "unsigned" || arg.type_name == "size_t" || arg.type_name == "shared_ptr") {
                 // Deserialize integer vectors - expect exactly one vector
-                if (proto_arg.int_vectors_size() != 1) {
-                    THROW("Expected exactly one int vector for argument " + arg.arg_name + ", but found " + std::to_string(proto_arg.int_vectors_size()));
+                if (proto_arg.int_vectors_size() > 1) {
+                    THROW("Expected at most one int vector for argument " + arg.arg_name + ", but found " + std::to_string(proto_arg.int_vectors_size()));
                 }
                 const auto& int_vec = proto_arg.int_vectors(0);
                 for (auto val : int_vec.values()) {
                     if (arg.type_name == "unsigned") {
-                        arg.values.push_back(static_cast<unsigned>(val));
+                        arg.values.emplace_back(static_cast<unsigned>(val));
                     } else if (arg.type_name == "size_t") {
-                        arg.values.push_back(static_cast<size_t>(val));
-                    } else if (arg.type_name == "shared_ptr") {
-                        arg.values.push_back(static_cast<int>(val));
-                    } else { // int
-                        arg.values.push_back(static_cast<int>(val));
+                        arg.values.emplace_back(static_cast<size_t>(val));
+                    } else if (arg.type_name == "shared_ptr" || arg.type_name == "int") {
+                        arg.values.emplace_back(static_cast<int>(val));
                     }
                 }
             } else if (arg.type_name == "float") {
                 // Deserialize float vectors - expect exactly one vector
-                if (proto_arg.float_vectors_size() != 1) {
-                    THROW("Expected exactly one float vector for argument " + arg.arg_name + ", but found " + std::to_string(proto_arg.float_vectors_size()));
+                if (proto_arg.float_vectors_size() > 1) {
+                    THROW("Expected at most one float vector for argument " + arg.arg_name + ", but found " + std::to_string(proto_arg.float_vectors_size()));
                 }
                 const auto& float_vec = proto_arg.float_vectors(0);
                 for (auto val : float_vec.values()) {
-                    arg.values.push_back(val);
+                    arg.values.emplace_back(val);
                 }
             } else if (arg.type_name == "char_str" || arg.type_name == "string" || arg.type_name == "map_string") {
                 // Deserialize string vectors - expect exactly one vector
-                if (proto_arg.string_vectors_size() != 1) {
-                    THROW("Expected exactly one string vector for argument " + arg.arg_name + ", but found " + std::to_string(proto_arg.string_vectors_size()));
+                if (proto_arg.string_vectors_size() > 1) {
+                    THROW("Expected at most one string vector for argument " + arg.arg_name + ", but found " + std::to_string(proto_arg.string_vectors_size()));
                 }
                 const auto& string_vec = proto_arg.string_vectors(0);
                 for (const auto& val : string_vec.values()) {
-                    arg.values.push_back(val);
+                    arg.values.emplace_back(val);
                 }
             } else {
                 THROW("Vector type not supported during deserialization for Argument " + arg.arg_name + " with type " + arg.type_name);
@@ -377,27 +383,27 @@ RocalStatus PipelineSerializer::deserialize_args_from_protobuf(const rocal_proto
         // Handle non-parameter arguments
         else if (arg.type_name == "int" || arg.type_name == "shared_ptr") {
             for (auto i : proto_arg.ints()) {
-                arg.values.push_back(static_cast<int>(i));
+                arg.values.emplace_back(static_cast<int>(i));
             }
         } else if (arg.type_name == "float") {
             for (auto f : proto_arg.floats()) {
-                arg.values.push_back(f);
+                arg.values.emplace_back(f);
             }
         } else if (arg.type_name == "char_str" || arg.type_name == "string") {
             for (const auto& s : proto_arg.strings()) {
-                arg.values.push_back(s);
+                arg.values.emplace_back(s);
             }
         } else if (arg.type_name == "bool") {
             for (auto b : proto_arg.bools()) {
-                arg.values.push_back(b);
+                arg.values.emplace_back(b);
             }
         } else if (arg.type_name == "unsigned") {
             for (auto u : proto_arg.uints()) {
-                arg.values.push_back(static_cast<unsigned>(u));
+                arg.values.emplace_back(static_cast<unsigned>(u));
             }
         } else if (arg.type_name == "size_t") {
             for (auto u : proto_arg.uints()) {
-                arg.values.push_back(static_cast<size_t>(u));
+                arg.values.emplace_back(static_cast<size_t>(u));
             }
         } else if (arg.type_name == "nullptr") {
             arg.is_null_ptr = true;
@@ -405,7 +411,7 @@ RocalStatus PipelineSerializer::deserialize_args_from_protobuf(const rocal_proto
             THROW("Invalid or unsupported type while deserializing: " + arg.type_name);
         }
 
-        arguments.push_back(std::move(arg));
+        arguments.add_argument(arg.arg_name, arg);
     }
     return ROCAL_OK;
 }

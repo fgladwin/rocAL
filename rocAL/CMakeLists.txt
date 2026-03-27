@@ -81,7 +81,7 @@ if(GPU_SUPPORT AND "${BACKEND}" STREQUAL "HIP")
     list(APPEND CMAKE_PREFIX_PATH ${ROCM_PATH} ${ROCM_PATH}/hip)	
     # Set supported GPU Targets
     if(NOT GPU_TARGETS AND NOT AMDGPU_TARGETS)
-        set(DEFAULT_GPU_TARGETS "gfx908;gfx90a;gfx942;gfx1030;gfx1031;gfx1032;gfx1100;gfx1101;gfx1102;gfx950;gfx1200;gfx1201")
+        set(DEFAULT_GPU_TARGETS "gfx908;gfx90a;gfx942;gfx1030;gfx1031;gfx1032;gfx1100;gfx1101;gfx1102;gfx1151;gfx950;gfx1200;gfx1201")
     endif()
 
     # Set AMD GPU_TARGETS
@@ -322,9 +322,16 @@ if(${BUILD_ROCAL})
     else()
         message(FATAL_ERROR "No filesystem library found.")
     endif()
-    
+
+    if(${VX_EXT_RPP_VERSION_MAJOR} VERSION_GREATER_EQUAL "3" AND ${VX_EXT_RPP_VERSION_MINOR} VERSION_GREATER_EQUAL "2" AND ${VX_EXT_RPP_VERSION_PATCH} VERSION_GREATER_EQUAL "0")
+        set(BUILD_ROCAL TRUE)
+    else()
+        set(BUILD_ROCAL FALSE)
+        message("-- ${Yellow}rocAL -- Requires MIVisionX vx_rpp version >= 3.2.0 for rocAL${ColourReset}")
+    endif()
+
     # Audio features for rocAL
-    if(${VX_EXT_RPP_VERSION_MAJOR} VERSION_GREATER_EQUAL "3" AND ${VX_EXT_RPP_VERSION_MINOR} VERSION_GREATER_EQUAL "1" AND ${VX_EXT_RPP_VERSION_PATCH} VERSION_GREATER_EQUAL "0")
+    if(VX_EXT_RPP_VERSION VERSION_GREATER_EQUAL "3.1.0")
         if(NOT SNDFILE_FOUND)
             message("-- ${Yellow}NOTE: rocAL built without SndFile - Audio functionalities will not be supported${ColourReset}")
             set(AUDIO_SUPPORT FALSE)

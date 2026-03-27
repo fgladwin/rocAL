@@ -53,6 +53,13 @@ vx_enum vx_mem_type(RocalMemType mem);
  */
 vx_uint64 tensor_data_size(RocalTensorDataType data_type);
 
+/*! \brief Converts the Rocal data_type to OpenVX
+ *
+ * @param RocalTensorDataType input data type
+ * @return the OpenVX data type associated with input argument
+ */
+vx_enum interpret_tensor_data_type(RocalTensorDataType data_type);
+
 /*! \brief Allocated memory for given size
  *
  * @param void * The ptr for which memory is allocated
@@ -377,7 +384,7 @@ class Tensor : public rocalTensor {
         return (_info.mem_type() == RocalMemType::HOST ? ROCAL_CPU : ROCAL_GPU);
     }
     uint64_t data_type_size() override { return _info.data_type_size(); }
-    std::string tensor_name() { return _tensor_name; }
+    const std::string& tensor_name() const { return _tensor_name; }
    private:
     vx_tensor _vx_handle = nullptr;  //!< The OpenVX tensor
     void* _mem_handle = nullptr;     //!< Pointer to the tensor's internal buffer (opencl or host)

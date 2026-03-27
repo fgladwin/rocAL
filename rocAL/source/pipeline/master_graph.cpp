@@ -1184,8 +1184,8 @@ TensorListVector* MasterGraph::create_label_reader(const char *source_path, Meta
     auto reader_op = std::make_shared<PipelineOperator>("LabelReader_" + std::to_string(_op_idx++), "reader");
 
     // Add all arguments as part of the operator
-    reader_op->arguments.push_back(Argument("source_path", source_path));
-    reader_op->arguments.push_back(Argument("reader_type", reader_type));
+    reader_op->arguments.add_new_argument("source_path", source_path);
+    reader_op->arguments.add_new_argument("reader_type", reader_type);
 
     _pipeline_operators.push_back(reader_op);
 
@@ -1800,7 +1800,7 @@ void MasterGraph::serialize(size_t *serialized_string_size) {
         THROW("serialized_string_size pointer is null");
     }
     _pipeline_serializer.reset();
-    _pipeline_serializer.serialize_pipeline_config(_cpu_num_threads, _user_batch_size, _gpu_id, _mem_type, _prefetch_queue_depth);
+    _pipeline_serializer.serialize_pipeline_config(_cpu_num_threads, _user_batch_size, _gpu_id, _mem_type, _prefetch_queue_depth, ParameterFactory::instance()->get_seed());
     _pipeline_serializer.serialize_operators(_pipeline_operators);
     _pipeline_serializer.serialize_output_tensors(_internal_tensor_list);
     _pipeline_serializer.serialize_to_string(_serialized_pipeline);
@@ -1809,19 +1809,19 @@ void MasterGraph::serialize(size_t *serialized_string_size) {
 
 Tensor *MasterGraph::create_operator_output(const rocal_proto::InputOutput &output, bool is_loader_output) {
     if (output.is_argument_input())
-        THROW("The tensor is an input, it is already created in the pipeline")
+        THROW("The tensor '" + output.name() + "' is an input, it is already created in the pipeline.")
 
     if (_pipeline_tensors.find(output.name()) != _pipeline_tensors.end()) {
-        THROW("The tensor is already created and present in the pipeline")
+        THROW("The tensor '" + output.name() + "' is already created and present in the pipeline.")
     }
     // dims
     std::vector<size_t> dims;
-    for (auto& dim : output.dims()) {
+    for (const auto& dim : output.dims()) {
         dims.push_back(dim);
     }
 
-    if (!dims.size())
-        THROW("Empty tensor dims")
+    if (dims.empty())
+        THROW(std::string("Empty tensor dims for tensor: ") + output.name())
     
     // Update the N dim to the batch size set in the pipeline
     dims[0] = _user_batch_size;
@@ -1834,26 +1834,21 @@ Tensor *MasterGraph::create_operator_output(const rocal_proto::InputOutput &outp
     
     auto info = TensorInfo(dims, mem_type, data_type, layout, color_format);
     Tensor *out = nullptr;
-    
+
     // only for loader
     if (is_loader_output) {
         out = this->create_internal_tensor(info);
-        _pipeline_tensors[output.name()] = out;
     } else {
         out = this->create_tensor(info, false);
-        _pipeline_tensors[output.name()] = out;
     }
+    _pipeline_tensors[output.name()] = out;
     return out;
 }
 
-// Helper function to extract prefix before the first underscore
-inline std::string get_prefix_before_underscore(const std::string& str) {
-    size_t underscore_pos = str.find('_');
-    return (underscore_pos != std::string::npos) ? str.substr(0, underscore_pos) : str;
-}
-
+// Helper function to extract the name of the node before the first underscore
 inline std::string get_node_name(const std::string& op_name) {
-    return get_prefix_before_underscore(op_name);
+    size_t underscore_pos = op_name.find('_');
+    return (underscore_pos != std::string::npos) ? op_name.substr(0, underscore_pos) : op_name;
 }
 
 // Array of geometric augmentation node names that may change tensor dimensions
@@ -1868,7 +1863,7 @@ inline bool check_tensor_info(const TensorInfo& input_info, const rocal_proto::I
     if (input_info.num_of_dims() != output.dims_size())
         return false;
     // Excluding N dim, as the batch size can be different as set by the user
-    for (int i = 1; i < input_info.num_of_dims(); i++) {
+    for (size_t i = 1; i < input_info.num_of_dims(); i++) {
         if (input_info.dims()[i] != output.dims(i))
             return false;
     }
@@ -1888,12 +1883,12 @@ inline bool check_tensor_info(const TensorInfo& input_info, const rocal_proto::I
     return true;
 }
 
-std::shared_ptr<Node> MasterGraph::add_node(std::string node_name, const std::vector<Tensor *> &inputs, const std::vector<Tensor *> &outputs, bool is_loader_node) {
+std::shared_ptr<Node> MasterGraph::add_node(const std::string& node_name, const std::vector<Tensor *> &inputs, const std::vector<Tensor *> &outputs, bool is_loader_node) {
     
     std::shared_ptr<Node> node = nullptr;
 
     if (is_loader_node) {
-#if ENABLE_HIP || ENABLE_OPENCL
+#if ENABLE_HIP
         node = NodeFactory::instance().create_loader_node(node_name, outputs[0], (void *)_device.resources());
 #else
         node = NodeFactory::instance().create_loader_node(node_name, outputs[0], nullptr);
@@ -1901,6 +1896,9 @@ std::shared_ptr<Node> MasterGraph::add_node(std::string node_name, const std::ve
         auto loader_module = node->get_loader_module();
         loader_module->set_prefetch_queue_depth(_prefetch_queue_depth);
         _loader_modules.emplace_back(loader_module);
+
+        // Assign a unique graph ID to this node based on the current loader count
+        // Each loader has its own graph, and nodes belong to exactly one graph
         node->set_graph_id(_loaders_count++);
         _root_nodes.push_back(node);
         
@@ -1933,11 +1931,14 @@ std::shared_ptr<Node> MasterGraph::add_node(std::string node_name, const std::ve
 
 void MasterGraph::deserialize(rocal_proto::PipelineDef *pipe_def) {
     _pipeline_tensors.clear();
-    for (auto& op_def : pipe_def->operators()) {
+    for (const auto& op_def : pipe_def->operators()) {
         if (op_def.has_module_name()) {
             if (op_def.module_name() == "reader") {
+                ArgumentSet args_list;
+                if (_pipeline_serializer.deserialize_args_from_protobuf(op_def, args_list) != ROCAL_OK)
+                        THROW("Failed to deserialize arguments for reader : " + op_def.name());
                 if (get_node_name(op_def.name()) == "LabelReader") {
-                    create_label_reader(op_def.args()[0].strings(0).c_str(), static_cast<MetaDataReaderType>(op_def.args()[1].enum_value().value()));
+                    create_label_reader(args_list.get<std::string>("source_path").c_str(), (args_list.get<MetaDataReaderType>("reader_type")));
                 }
             } else if (op_def.module_name() == "loader") {
                 // fetch the output tensor details and create it
@@ -1945,7 +1946,7 @@ void MasterGraph::deserialize(rocal_proto::PipelineDef *pipe_def) {
 
                 auto loader_node = this->add_node(get_node_name(op_def.name()), {}, {output_tensor}, true);
 
-                std::vector<Argument> args_list;
+                ArgumentSet args_list;
                 if (_pipeline_serializer.deserialize_args_from_protobuf(op_def, args_list) != ROCAL_OK)
                     THROW("Failed to deserialize arguments for loader : " + op_def.name());
 
@@ -1960,22 +1961,22 @@ void MasterGraph::deserialize(rocal_proto::PipelineDef *pipe_def) {
                     }
                 }
                 std::vector<Tensor *> outputs_vector;
-                if (inputs_vector.size() > 0) {
+                if (!inputs_vector.empty()) {
                     // Handle multiple outputs
                     for (const auto& op_output : op_def.outputs()) {
                         Tensor* output_tensor = nullptr;
                         
                         // Try to reuse input tensor info if compatible, otherwise create new tensor
                         bool tensor_info_compatible = false;
-                        if (!inputs_vector.empty()) {
-                            // Check compatibility with first input tensor as reference
-                            Tensor* reference_input = inputs_vector[0];
-                            bool is_geometric_aug = std::find(GEOMETRIC_AUGMENTATIONS.begin(), GEOMETRIC_AUGMENTATIONS.end(), get_node_name(op_def.name())) != GEOMETRIC_AUGMENTATIONS.end();
-                            if (reference_input && check_tensor_info(reference_input->info(), op_output)
-                                && !is_geometric_aug) {
-                                output_tensor = create_tensor(reference_input->info(), false);
-                                tensor_info_compatible = true;
-                            }
+                        
+                        // Check compatibility with first input tensor as reference
+                        Tensor* reference_input = inputs_vector[0];
+                        auto node_name = get_node_name(op_def.name());
+                        bool is_geometric_aug = std::find(GEOMETRIC_AUGMENTATIONS.begin(), GEOMETRIC_AUGMENTATIONS.end(), node_name) != GEOMETRIC_AUGMENTATIONS.end();
+                        if (reference_input && check_tensor_info(reference_input->info(), op_output)
+                            && !is_geometric_aug) {
+                            output_tensor = create_tensor(reference_input->info(), false);
+                            tensor_info_compatible = true;
                         }
                         
                         if (!tensor_info_compatible) {
@@ -1991,12 +1992,12 @@ void MasterGraph::deserialize(rocal_proto::PipelineDef *pipe_def) {
                         outputs_vector.push_back(output_tensor);
                     }
                 } else {
-                    THROW("Input not available for this Augmentation Node -> " + op_def.name())
+                    THROW("Input not available for this Augmentation Node -> " + op_def.name() + ".")
                 }
                 // Create the node with all inputs and outputs
                 auto node = this->add_node(get_node_name(op_def.name()), inputs_vector, outputs_vector);
 
-                std::vector<Argument> args_list;
+               ArgumentSet args_list;
                 if (_pipeline_serializer.deserialize_args_from_protobuf(op_def, args_list) != ROCAL_OK)
                     THROW("Failed to deserialize arguments for node : " + op_def.name());
 
@@ -2010,7 +2011,7 @@ void MasterGraph::deserialize(rocal_proto::PipelineDef *pipe_def) {
         if (_pipeline_tensors.find(pipe_out.name()) != _pipeline_tensors.end()) {
             this->set_output(_pipeline_tensors[pipe_out.name()]);
         } else {
-            THROW("The required output tensor is not present in the reconstructed pipeline")
+            THROW("The required output tensor '" + pipe_out.name() + "' is not present in the reconstructed pipeline.")
         }
     }
 }
